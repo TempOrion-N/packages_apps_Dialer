@@ -20,6 +20,7 @@ import android.content.Context;
 import android.provider.CallLog.Calls;
 import android.text.format.DateUtils;
 import android.text.format.Formatter;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -30,9 +31,13 @@ import com.android.contacts.common.CallUtil;
 import com.android.dialer.PhoneCallDetails;
 import com.android.dialer.R;
 import com.android.dialer.util.DialerUtils;
+import com.android.dialer.util.AppCompatConstants;
+import com.android.dialer.util.PresenceHelper;
 import com.google.common.collect.Lists;
 
 import java.util.ArrayList;
+
+import org.codeaurora.ims.utils.QtiImsExtUtils;
 
 /**
  * Adapter for a ListView containing history items from the details of a call.
@@ -105,12 +110,25 @@ public class CallDetailHistoryAdapter extends BaseAdapter {
         TextView durationView = (TextView) result.findViewById(R.id.duration);
 
         int callType = details.callTypes[0];
-        boolean isVideoCall = (details.features & Calls.FEATURES_VIDEO) == Calls.FEATURES_VIDEO
-                && CallUtil.isVideoEnabled(mContext);
-
+        boolean isPresenceEnabled = mContext.getResources().getBoolean(
+                R.bool.config_regional_presence_enable);
+        boolean isVideoCall = (details.features & Calls.FEATURES_VIDEO) == Calls.FEATURES_VIDEO;
+        if (isPresenceEnabled) {
+            isVideoCall &= PresenceHelper.startAvailabilityFetch(details.number.toString());
+        }
+        Log.d("CallDetailHistoryAdapter", "isVideoCall = " + isVideoCall
+                    + ", callType = " + callType);
         callTypeIconView.clear();
         callTypeIconView.add(callType);
-        callTypeIconView.setShowVideo(isVideoCall);
+        /**
+         * Ims icon(VoLTE/VoWifi) or CarrierOne video icon will be shown if carrierOne is supported
+         * otherwise, default video icon will be shown if it is a video call.
+         */
+        if (QtiImsExtUtils.isCarrierOneSupported()) {
+             callTypeIconView.addImsOrVideoIcon(callType, isVideoCall);
+        } else {
+             callTypeIconView.setShowVideo(isVideoCall);
+        }
         callTypeTextView.setText(mCallTypeHelper.getCallTypeText(callType, isVideoCall));
         // Set the date.
         CharSequence dateValue = DateUtils.formatDateRange(mContext, details.date, details.date,
@@ -118,7 +136,10 @@ public class CallDetailHistoryAdapter extends BaseAdapter {
                 DateUtils.FORMAT_SHOW_WEEKDAY | DateUtils.FORMAT_SHOW_YEAR);
         dateView.setText(dateValue);
         // Set the duration
-        if (Calls.VOICEMAIL_TYPE == callType || CallTypeHelper.isMissedCallType(callType)) {
+        boolean callDurationEnabled = mContext.getResources()
+                .getBoolean(R.bool.call_duration_enabled);
+        if (Calls.VOICEMAIL_TYPE == callType || CallTypeHelper.isMissedCallType(callType) ||
+                !callDurationEnabled) {
             durationView.setVisibility(View.GONE);
         } else {
             durationView.setVisibility(View.VISIBLE);
